@@ -182,6 +182,79 @@ class TestManifestManager(unittest.TestCase):
             else:
                 group_splits[r.original_video_id] = r.split
 
+    def test_extended_fields_backward_compatibility(self):
+        """Test round-trip of extended fields (subject_id, provenance, error_detail)."""
+        records = [
+            ManifestRecord(
+                sample_id="EXT_001",
+                video_path="videos/c23_001.mp4",
+                label=0,
+                dataset_name="Celeb-DF-v2",
+                split="train",
+                manipulation_type="original",
+                original_video_id="id0_0001",
+                preprocessing_status="SUCCESS",
+                subject_id="id0",
+                provenance="https://github.com/yuezunli/celeb-deepfakeforensic",
+                error_detail="",
+            )
+        ]
+        ManifestManager.write_manifest(records, self.csv_path)
+        loaded = ManifestManager.read_manifest(self.csv_path)
+
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0].subject_id, "id0")
+        self.assertEqual(loaded[0].provenance, "https://github.com/yuezunli/celeb-deepfakeforensic")
+        self.assertEqual(loaded[0].error_detail, "")
+
+    def test_subject_identity_leakage_detection(self):
+        """Test that actor/subject identity crossing splits is flagged as a leakage violation."""
+        records = [
+            ManifestRecord("S1", "v1.mp4", 0, "ds", "train", subject_id="ACTOR_CELEB_01"),
+            ManifestRecord("S2", "v2.mp4", 1, "ds", "val", subject_id="ACTOR_CELEB_01"),
+        ]
+        violations = ManifestManager.verify_leakage_safety(records)
+        self.assertEqual(len(violations), 1)
+        self.assertIn("ACTOR_CELEB_01", violations[0])
+
+    def test_leakage_safe_splits_multi_level_grouping(self):
+        """Test that Disjoint-Set groups both shared original video and shared subject identity safely."""
+        records = [
+            # Actor 1: 1 real, 1 fake sharing original, 1 fake sharing actor identity
+            ManifestRecord("R1", "v1.mp4", 0, "ds", "", original_video_id="O1", subject_id="ACTOR_1"),
+            ManifestRecord("F1", "v2.mp4", 1, "ds", "", original_video_id="O1", subject_id=""),
+            ManifestRecord("F2", "v3.mp4", 1, "ds", "", original_video_id="O2", subject_id="ACTOR_1"),
+            # Actor 2
+            ManifestRecord("R2", "v4.mp4", 0, "ds", "", original_video_id="O3", subject_id="ACTOR_2"),
+            ManifestRecord("F3", "v5.mp4", 1, "ds", "", original_video_id="O3", subject_id="ACTOR_2"),
+            # Actor 3
+            ManifestRecord("R3", "v6.mp4", 0, "ds", "", original_video_id="O4", subject_id="ACTOR_3"),
+            ManifestRecord("F4", "v7.mp4", 1, "ds", "", original_video_id="O4", subject_id="ACTOR_3"),
+        ]
+
+        partitioned = ManifestManager.create_leakage_safe_splits(
+            records, train_ratio=0.34, val_ratio=0.33, test_ratio=0.33, seed=42
+        )
+        violations = ManifestManager.verify_leakage_safety(partitioned)
+        self.assertEqual(violations, [])
+
+        # Ensure R1, F1, and F2 (all related to Actor 1) share identical split
+        actor1_splits = {r.split for r in partitioned if r.sample_id in {"R1", "F1", "F2"}}
+        self.assertEqual(len(actor1_splits), 1)
+
+    def test_deterministic_split_reproducibility(self):
+        """Test that identical random seed produces identical split allocations."""
+        records = [
+            ManifestRecord(f"S_{i}", f"v_{i}.mp4", i % 2, "ds", "", original_video_id=f"O_{i // 2}")
+            for i in range(20)
+        ]
+        split1 = ManifestManager.create_leakage_safe_splits(records, seed=999)
+        split2 = ManifestManager.create_leakage_safe_splits(records, seed=999)
+
+        for r1, r2 in zip(split1, split2):
+            self.assertEqual(r1.sample_id, r2.sample_id)
+            self.assertEqual(r1.split, r2.split)
+
 
 if __name__ == "__main__":
     unittest.main()

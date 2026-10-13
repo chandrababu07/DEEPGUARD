@@ -31,7 +31,7 @@ SPLIT_NORMALIZATION = {
     "testing": "test",
 }
 
-MANIFEST_FIELDNAMES = [
+MANIFEST_CORE_FIELDNAMES = [
     "sample_id",
     "video_path",
     "label",
@@ -42,10 +42,35 @@ MANIFEST_FIELDNAMES = [
     "preprocessing_status",
 ]
 
+MANIFEST_EXTENDED_FIELDNAMES = MANIFEST_CORE_FIELDNAMES + [
+    "subject_id",
+    "provenance",
+    "error_detail",
+]
+
+MANIFEST_FIELDNAMES = MANIFEST_CORE_FIELDNAMES
+
 
 @dataclass
 class ManifestRecord:
-    """Represents a single record in the DeepGuard dataset manifest."""
+    """
+    Represents a single record in the DeepGuard dataset manifest.
+
+    Core fields (Phase 2):
+    - sample_id: Unique identifier for each video sample
+    - video_path: Path to the video file
+    - label: 0 for real/authentic, 1 for fake/manipulated
+    - dataset_name: Origin dataset (e.g. FaceForensics++, Celeb-DF, DFDC, synthetic)
+    - split: Partition assignment ('train', 'validation', 'test')
+    - manipulation_type: E.g. 'original', 'Deepfakes', 'Face2Face', 'FaceSwap', 'NeuralTextures', 'synthetic'
+    - original_video_id: Source actor or original video ID when available (used for leakage-free splitting)
+    - preprocessing_status: Status of preprocessing ('PENDING', 'SUCCESS', 'FAILED_UNREADABLE', etc.)
+
+    Extended provenance and leakage-prevention fields (Phase 3):
+    - subject_id: Unique actor/subject identity identifier (e.g. 'id0', 'id1', '001')
+    - provenance: Dataset license, URL, or origin citation reference
+    - error_detail: Detailed message if preprocessing failed
+    """
 
     sample_id: str
     video_path: str
@@ -55,6 +80,9 @@ class ManifestRecord:
     manipulation_type: str = "unknown"
     original_video_id: str = ""
     preprocessing_status: str = "PENDING"
+    subject_id: str = ""
+    provenance: str = ""
+    error_detail: str = ""
 
     def __post_init__(self):
         # Normalize split name if alias provided
@@ -70,7 +98,7 @@ class ManifestRecord:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ManifestRecord":
-        """Construct record from dictionary with type coercion."""
+        """Construct record from dictionary with backward-compatible defaults."""
         return cls(
             sample_id=str(data.get("sample_id", "")).strip(),
             video_path=str(data.get("video_path", "")).strip(),
@@ -80,11 +108,18 @@ class ManifestRecord:
             manipulation_type=str(data.get("manipulation_type", "unknown")).strip(),
             original_video_id=str(data.get("original_video_id", "")).strip(),
             preprocessing_status=str(data.get("preprocessing_status", "PENDING")).strip(),
+            subject_id=str(data.get("subject_id", "")).strip(),
+            provenance=str(data.get("provenance", "")).strip(),
+            error_detail=str(data.get("error_detail", "")).strip(),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert record to dictionary matching MANIFEST_FIELDNAMES."""
-        return asdict(self)
+    def to_dict(self, include_extended: bool = False) -> Dict[str, Any]:
+        """Convert record to dictionary matching MANIFEST_FIELDNAMES or extended fieldnames."""
+        d = asdict(self)
+        if not include_extended and not self.subject_id and not self.provenance and not self.error_detail:
+            # Drop extended fields if unused to preserve legacy 8-column format
+            return {k: d[k] for k in MANIFEST_CORE_FIELDNAMES}
+        return d
 
 
 @dataclass
@@ -197,14 +232,57 @@ class ManifestManager:
         return records
 
     @staticmethod
-    def write_manifest(records: List[ManifestRecord], csv_path: str) -> None:
+    def write_manifest(
+        records: List[ManifestRecord],
+        csv_path: str,
+        include_extended: Optional[bool] = None,
+    ) -> None:
         """Write a list of ManifestRecord objects to a CSV file."""
         os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
+        # Determine whether to include extended fields
+        if include_extended is None:
+            has_extended = any(r.subject_id or r.provenance or r.error_detail for r in records)
+        else:
+            has_extended = include_extended
+
+        fieldnames = MANIFEST_EXTENDED_FIELDNAMES if has_extended else MANIFEST_CORE_FIELDNAMES
+
         with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=MANIFEST_FIELDNAMES)
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for r in records:
-                writer.writerow(r.to_dict())
+                writer.writerow(r.to_dict(include_extended=has_extended))
+
+    @staticmethod
+    def verify_leakage_safety(records: List[ManifestRecord]) -> List[str]:
+        """
+        Scan records and verify that neither original_video_id nor subject_id crosses splits.
+
+        Returns:
+            List of violation description strings (empty if completely leakage-safe).
+        """
+        orig_to_splits: Dict[str, Set[str]] = defaultdict(set)
+        subject_to_splits: Dict[str, Set[str]] = defaultdict(set)
+
+        for rec in records:
+            if rec.split in VALID_SPLITS:
+                if rec.original_video_id:
+                    orig_to_splits[rec.original_video_id].add(rec.split)
+                if rec.subject_id:
+                    subject_to_splits[rec.subject_id].add(rec.split)
+
+        violations = []
+        for orig_id, splits in sorted(orig_to_splits.items()):
+            if len(splits) > 1:
+                violations.append(
+                    f"Original video leakage: original_video_id '{orig_id}' crosses splits: {sorted(list(splits))}"
+                )
+        for sub_id, splits in sorted(subject_to_splits.items()):
+            if len(splits) > 1:
+                violations.append(
+                    f"Subject/actor identity leakage: subject_id '{sub_id}' crosses splits: {sorted(list(splits))}"
+                )
+        return violations
 
     @staticmethod
     def validate_manifest(
@@ -217,15 +295,15 @@ class ManifestManager:
         - Check required fields are non-empty.
         - Validate label in {0, 1}.
         - Validate split in {'train', 'validation', 'test'}.
-        - Detect duplicate sample IDs.
+        - Detect duplicate sample IDs and video paths.
         - Optionally verify physical existence of video_path on disk.
-        - Verify no related original/fake videos are placed in different splits (leakage check).
+        - Verify no related original/fake videos or identities cross splits (leakage check).
         """
         report = ValidationReport(total_records=len(records))
 
         seen_sample_ids: Set[str] = set()
         duplicate_ids: Set[str] = set()
-        group_to_splits: Dict[str, Set[str]] = defaultdict(set)
+        seen_paths: Dict[str, str] = {}  # path -> first sample_id
 
         for idx, rec in enumerate(records, start=2):  # row 1 is header
             record_is_valid = True
@@ -251,16 +329,32 @@ class ManifestManager:
                     RecordError(rec.sample_id, idx, "video_path", "video_path cannot be empty")
                 )
                 record_is_valid = False
-            elif check_video_paths:
-                full_path = rec.video_path
-                if base_dir and not os.path.isabs(full_path):
-                    full_path = os.path.join(base_dir, full_path)
-                if not os.path.exists(full_path):
-                    report.missing_video_paths.append(full_path)
+            else:
+                # Check duplicate video paths
+                norm_path = rec.video_path.replace("\\", "/").lower()
+                if norm_path in seen_paths:
                     report.errors.append(
-                        RecordError(rec.sample_id, idx, "video_path", f"Video file not found: '{full_path}'")
+                        RecordError(
+                            rec.sample_id,
+                            idx,
+                            "video_path",
+                            f"Duplicate video_path '{rec.video_path}' already used by '{seen_paths[norm_path]}'",
+                        )
                     )
                     record_is_valid = False
+                else:
+                    seen_paths[norm_path] = rec.sample_id
+
+                if check_video_paths:
+                    full_path = rec.video_path
+                    if base_dir and not os.path.isabs(full_path):
+                        full_path = os.path.join(base_dir, full_path)
+                    if not os.path.exists(full_path):
+                        report.missing_video_paths.append(full_path)
+                        report.errors.append(
+                            RecordError(rec.sample_id, idx, "video_path", f"Video file not found: '{full_path}'")
+                        )
+                        record_is_valid = False
 
             # 3. label validation
             if rec.label not in VALID_LABELS:
@@ -296,11 +390,6 @@ class ManifestManager:
                     report.split_class_counts[rec.split]["fake"] += 1
                 report.split_class_counts[rec.split]["total"] += 1
 
-            # 5. Track identity group for leakage prevention
-            group_key = rec.original_video_id if rec.original_video_id else rec.sample_id
-            if rec.split in VALID_SPLITS:
-                group_to_splits[group_key].add(rec.split)
-
             if record_is_valid:
                 report.valid_records_count += 1
             else:
@@ -308,53 +397,68 @@ class ManifestManager:
 
         report.duplicate_sample_ids = sorted(list(duplicate_ids))
 
-        # Check for group leakage across splits
-        for group_id, splits in group_to_splits.items():
-            if len(splits) > 1:
-                violation_msg = (
-                    f"Identity/relationship leakage detected: Group '{group_id}' "
-                    f"is scattered across multiple splits: {sorted(list(splits))}"
-                )
-                report.leakage_violations.append(violation_msg)
+        # Check for original video or subject identity leakage across splits
+        report.leakage_violations = ManifestManager.verify_leakage_safety(records)
 
         return report
 
     @staticmethod
-    def create_group_aware_splits(
+    def create_leakage_safe_splits(
         records: List[ManifestRecord],
         train_ratio: float = 0.70,
         val_ratio: float = 0.15,
         test_ratio: float = 0.15,
         seed: int = 42,
+        prioritize_identity: bool = True,
     ) -> List[ManifestRecord]:
         """
-        Partition records into train, validation, and test splits without actor or
-        manipulation leakage.
+        Partition records into train, validation, and test splits with strict leakage prevention.
 
-        If a sample has an original_video_id, all samples sharing that original_video_id
-        (both authentic and manipulated derivatives) are guaranteed to be placed into
-        the exact same split partition.
+        Hierarchy:
+        1. Original video grouping (authentic video + all synthetic derivatives stay together).
+        2. Subject identity grouping (when subject_id is provided, actor does not cross splits).
+        3. Fallback: singleton group by sample_id when no relational metadata exists.
 
-        Args:
-            records: Input list of ManifestRecord.
-            train_ratio: Proportion for training split (default 0.70).
-            val_ratio: Proportion for validation split (default 0.15).
-            test_ratio: Proportion for test split (default 0.15).
-            seed: Random seed for deterministic reproducibility.
-
-        Returns:
-            Updated list of ManifestRecord with populated split field.
+        Uses Disjoint-Set / Connected Components so transitive relationships (e.g. video A shares
+        original with B, and B shares subject with C) are guaranteed into the exact same split.
         """
         if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-5:
             raise ValueError("Split ratios must sum to 1.0")
 
-        # Group records by original_video_id if provided, else sample_id
+        # Disjoint-Set (Union-Find)
+        parent: Dict[str, str] = {}
+
+        def find(item: str) -> str:
+            if item not in parent:
+                parent[item] = item
+                return item
+            if parent[item] != item:
+                parent[item] = find(parent[item])
+            return parent[item]
+
+        def union(a: str, b: str) -> None:
+            root_a = find(a)
+            root_b = find(b)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        for r in records:
+            sample_node = f"sample:{r.sample_id}"
+            find(sample_node)
+            if r.original_video_id:
+                orig_node = f"orig:{r.original_video_id}"
+                union(sample_node, orig_node)
+            if prioritize_identity and r.subject_id:
+                sub_node = f"sub:{r.subject_id}"
+                union(sample_node, sub_node)
+
+        # Cluster records by disjoint-set root
         groups: Dict[str, List[ManifestRecord]] = defaultdict(list)
         for r in records:
-            group_id = r.original_video_id if r.original_video_id else r.sample_id
-            groups[group_id].append(r)
+            root = find(f"sample:{r.sample_id}")
+            groups[root].append(r)
 
-        # Deterministically shuffle groups
+        # Deterministically shuffle group keys
         group_keys = sorted(list(groups.keys()))
         rng = random.Random(seed)
         rng.shuffle(group_keys)
@@ -381,3 +485,23 @@ class ManifestManager:
                 updated_records.append(r)
 
         return updated_records
+
+    @staticmethod
+    def create_group_aware_splits(
+        records: List[ManifestRecord],
+        train_ratio: float = 0.70,
+        val_ratio: float = 0.15,
+        test_ratio: float = 0.15,
+        seed: int = 42,
+    ) -> List[ManifestRecord]:
+        """
+        Legacy alias for create_leakage_safe_splits, preserving Phase 2 compatibility.
+        """
+        return ManifestManager.create_leakage_safe_splits(
+            records=records,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            seed=seed,
+            prioritize_identity=True,
+        )

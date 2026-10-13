@@ -131,6 +131,21 @@ class TestVideoPreprocessor(unittest.TestCase):
         self.assertIsNone(result.frames)
         self.assertIsNotNone(result.error_message)
 
+    def test_process_detector_unavailable_fails_explicitly(self):
+        """Test that uninitialized/unavailable face detector resources return explicit failure."""
+        from src.dataset.face_detector import HaarCascadeFaceDetector
+
+        unavailable_detector = HaarCascadeFaceDetector(cascade_path="non_existent_cascade.xml")
+        prep_with_unavailable = VideoPreprocessor(face_detector=unavailable_detector)
+
+        video_path = os.path.join(self.fixture_dir, "synth_real_01.mp4")
+        result = prep_with_unavailable.process_video(video_path, sample_id="UNAVAIL_001")
+
+        self.assertFalse(result.is_success)
+        self.assertEqual(result.status, "FAILED_DETECTOR_UNAVAILABLE")
+        self.assertIsNone(result.frames)
+        self.assertIn("unavailable or uninitialized", result.error_message)
+
 
 if __name__ == "__main__":
     unittest.main()

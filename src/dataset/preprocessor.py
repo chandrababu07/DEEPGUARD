@@ -193,6 +193,16 @@ class VideoPreprocessor:
         last_bbox: Optional[Tuple[int, int, int, int]] = None
         bounding_boxes: List[Optional[Tuple[int, int, int, int]]] = []
 
+        # Explicitly verify face detector resources before processing
+        if hasattr(self.face_detector, "is_available") and not self.face_detector.is_available:
+            return PreprocessingResult(
+                sample_id=sample_id,
+                video_path=video_path,
+                status="FAILED_DETECTOR_UNAVAILABLE",
+                error_message="Face detector resources (e.g. Haar XML cascade or model file) are unavailable or uninitialized.",
+                metadata={"sampled_indices": indices, "total_frames": total_frames},
+            )
+
         # First pass: check if any frame has a detectable face
         detected_boxes: List[Optional[Tuple[int, int, int, int]]] = [
             self.face_detector.detect(f) for f in sampled_bgr_frames
