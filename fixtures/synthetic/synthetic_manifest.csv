@@ -1,0 +1,6 @@
+sample_id,video_path,label,dataset_name,split,manipulation_type,original_video_id,preprocessing_status
+SYNTH_REAL_001,synthetic/synth_real_01.mp4,0,synthetic_fixture,train,original,ACTOR_01,PENDING
+SYNTH_FAKE_001,synthetic/synth_fake_01.mp4,1,synthetic_fixture,train,synthetic_blend,ACTOR_01,PENDING
+SYNTH_REAL_002,synthetic/synth_real_02.mp4,0,synthetic_fixture,validation,original,ACTOR_02,PENDING
+SYNTH_NOFACE_001,synthetic/synth_noface.mp4,0,synthetic_fixture,test,original,ACTOR_03,PENDING
+SYNTH_CORRUPT_001,synthetic/synth_corrupt.mp4,1,synthetic_fixture,test,synthetic_corrupt,ACTOR_04,PENDING
