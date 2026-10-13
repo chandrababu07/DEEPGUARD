@@ -1,0 +1,50 @@
+{
+  "experiment": "DeepGuard JPEG compression sensitivity",
+  "model": "/content/drive/MyDrive/DeepGuard/experiments/mini_baseline/best_model.keras",
+  "test_sample_count": 6,
+  "conditions": {
+    "original": "Unmodified preprocessed frames",
+    "jpeg_q75": "JPEG quality 75",
+    "jpeg_q40": "JPEG quality 40"
+  },
+  "metrics": [
+    {
+      "condition": "original",
+      "test_videos": 6,
+      "accuracy": 0.8333333333333334,
+      "fake_precision": 0.6666666666666666,
+      "fake_recall": 1.0,
+      "fake_f1": 0.8
+    },
+    {
+      "condition": "jpeg_q75",
+      "test_videos": 6,
+      "accuracy": 0.8333333333333334,
+      "fake_precision": 0.6666666666666666,
+      "fake_recall": 1.0,
+      "fake_f1": 0.8
+    },
+    {
+      "condition": "jpeg_q40",
+      "test_videos": 6,
+      "accuracy": 1.0,
+      "fake_precision": 1.0,
+      "fake_recall": 1.0,
+      "fake_f1": 1.0
+    }
+  ],
+  "mean_absolute_probability_change": {
+    "jpeg_q75": 0.022464434305826824,
+    "jpeg_q40": 0.059330244859059654
+  },
+  "prediction_changes": {
+    "jpeg_q75": 0,
+    "jpeg_q40": 1
+  },
+  "limitations": [
+    "Only six held-out test videos were evaluated.",
+    "This tests JPEG compression of preprocessed frames, not full-video transcoding.",
+    "Results do not establish general robustness.",
+    "The evaluation split has not been verified as identity-independent."
+  ]
+}

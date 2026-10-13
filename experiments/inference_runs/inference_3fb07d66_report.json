@@ -1,0 +1,19 @@
+﻿{
+    "run_id":  "inference_3fb07d66",
+    "input_filename":  "00299.mp4",
+    "model_checkpoint":  "experiments/mini_baseline/best_model.keras",
+    "preprocessing_status":  "SUCCESS",
+    "frame_tensor_shape":  [
+                               8,
+                               128,
+                               128,
+                               3
+                           ],
+    "decision_threshold":  0.5,
+    "predicted_label":  "REAL",
+    "fake_score":  0.15665963292121887,
+    "real_score":  0.8433403670787811,
+    "predicted_class_score":  0.8433403670787811,
+    "score_calibration":  "Not calibrated",
+    "warning":  "Experimental prediction only. The small development dataset does not establish reliable generalization."
+}

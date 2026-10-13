@@ -1,0 +1,35 @@
+{
+  "experiment": "DeepGuard MobileNetV2 + LSTM baseline",
+  "dataset": "Celeb-DF-v2 mini subset",
+  "videos_preprocessed": 30,
+  "preprocessing_failures": 0,
+  "split_counts": {
+    "train": 18,
+    "validation": 6,
+    "test": 6
+  },
+  "training_epochs_completed": 5,
+  "final_training_accuracy": 0.9444,
+  "final_validation_accuracy": 0.8333,
+  "final_validation_loss": 0.4431,
+  "test_accuracy": 0.8333,
+  "fake_precision": 0.6667,
+  "fake_recall": 1.0,
+  "fake_f1": 0.8,
+  "test_confusion_matrix": [
+    [
+      3,
+      1
+    ],
+    [
+      0,
+      2
+    ]
+  ],
+  "test_samples": 6,
+  "limitations": [
+    "Very small test set; metrics are highly uncertain.",
+    "Random split is not verified to be identity-independent.",
+    "Results do not establish generalization to unseen datasets."
+  ]
+}
