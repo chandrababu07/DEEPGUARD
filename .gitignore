@@ -72,3 +72,6 @@ logs/
 .ipynb_checkpoints/
 wandb/
 runs/
+
+# Track the safe environment template, but ignore real environment files
+!.env.example

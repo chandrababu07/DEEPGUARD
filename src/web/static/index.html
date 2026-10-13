@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepGuard — Explainable Deepfake Video Detection</title>
+  <meta name="description" content="AI-powered spatial-temporal deepfake video detection framework with Grad-CAM explainability and confidence calibration.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <!-- Header -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">DEEPGUARD</span>
+          <span class="brand-subtitle">SPATIAL-TEMPORAL FORENSICS</span>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <div id="readiness-badge" class="badge badge-warning">
+          <span class="pulse-dot"></span>
+          <span id="readiness-text">Checking Service...</span>
+        </div>
+        <a href="/docs" target="_blank" class="nav-link" title="Open API Documentation">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          API Docs
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <section class="hero-section">
+      <div class="hero-tag">PHASE 6 DEPLOYMENT READY</div>
+      <h1 class="hero-title">Explainable Spatial–Temporal Deepfake Detection</h1>
+      <p class="hero-description">
+        Analyzes video manipulation signatures across 8-frame temporal sequences using MobileNetV2 feature extraction and LSTM dynamics, with Grad-CAM spatial visual saliency attribution.
+      </p>
+    </section>
+
+    <!-- Model Status Alert (hidden when model ready) -->
+    <div id="model-status-alert" class="alert-banner alert-warning" style="display: none;">
+      <div class="alert-icon">⚠️</div>
+      <div class="alert-content">
+        <strong id="alert-title">Model Runtime Offline</strong>
+        <p id="alert-message">TensorFlow is not installed in the local environment. Connect to Google Colab GPU runtime for live model inference.</p>
+      </div>
+    </div>
+
+    <!-- Upload & Analysis Area -->
+    <div class="grid-layout">
+      <!-- Upload Card -->
+      <section class="card upload-card" id="drop-zone">
+        <div class="card-header">
+          <h2>Video Ingestion</h2>
+          <span class="tag">8-Frame Uniform Sampling</span>
+        </div>
+
+        <div class="drop-area" id="drop-area">
+          <input type="file" id="video-file-input" accept=".mp4,.avi,.mov,.mkv,.webm" class="file-input" hidden>
+          <div class="upload-icon-wrapper">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <h3>Select or Drop Video File</h3>
+          <p class="subtext">Supported: MP4, AVI, MOV, MKV, WebM (Max 100 MB, up to 3 mins)</p>
+          <button type="button" class="btn btn-secondary" id="browse-btn">Browse Files</button>
+        </div>
+
+        <!-- Selected File Preview -->
+        <div id="file-preview-card" class="file-preview-card" style="display: none;">
+          <div class="preview-info">
+            <div class="file-icon">🎬</div>
+            <div class="file-details">
+              <span id="preview-filename" class="file-name">sample.mp4</span>
+              <span id="preview-filesize" class="file-size">0 MB</span>
+            </div>
+          </div>
+          <button type="button" class="btn-icon" id="clear-file-btn" title="Remove file">✕</button>
+        </div>
+
+        <!-- Scanning progress bar -->
+        <div id="progress-container" class="progress-container" style="display: none;">
+          <div class="progress-status">
+            <span id="progress-label">Processing frames...</span>
+            <span id="progress-percent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="card-actions">
+          <button type="button" class="btn btn-primary" id="analyze-btn" disabled>
+            <span class="btn-spinner" id="analyze-spinner" style="display: none;"></span>
+            Run Deepfake Analysis
+          </button>
+          <button type="button" class="btn btn-accent" id="explain-btn" disabled>
+            <span class="btn-spinner" id="explain-spinner" style="display: none;"></span>
+            Generate Grad-CAM
+          </button>
+        </div>
+      </section>
+
+      <!-- Analysis Results Card -->
+      <section class="card results-card" id="results-card">
+        <div class="card-header">
+          <h2>Forensic Verdict</h2>
+          <span id="verdict-time" class="tag">Awaiting analysis</span>
+        </div>
+
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon">🛡️</div>
+          <h3>No Analysis Conducted Yet</h3>
+          <p>Upload a video on the left and select "Run Deepfake Analysis" to evaluate manipulation probability.</p>
+        </div>
+
+        <div id="results-content" class="results-content" style="display: none;">
+          <!-- Big Verdict Badge -->
+          <div id="verdict-badge" class="verdict-badge verdict-authentic">
+            <span id="verdict-label">AUTHENTIC</span>
+            <span id="verdict-sublabel">No prominent manipulation patterns detected</span>
+          </div>
+
+          <!-- Score Gauge Meter -->
+          <div class="score-section">
+            <div class="score-header">
+              <span>Manipulation Likelihood (Fake Score)</span>
+              <span id="score-value" class="score-number">0.0000</span>
+            </div>
+            <div class="score-bar-track">
+              <div id="score-bar-fill" class="score-bar-fill" style="width: 0%;"></div>
+              <div class="threshold-marker" style="left: 50%;" title="Decision Threshold = 0.50"></div>
+            </div>
+            <div class="score-labels">
+              <span>0.00 (Authentic)</span>
+              <span class="threshold-label">Threshold: 0.50</span>
+              <span>1.00 (Manipulated)</span>
+            </div>
+          </div>
+
+          <!-- Metadata Grid -->
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-key">Request ID</span>
+              <span id="meta-request-id" class="meta-val mono">-</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-key">Inference Time</span>
+              <span id="meta-time" class="meta-val">-</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-key">Input Tensor Shape</span>
+              <span id="meta-tensor" class="meta-val mono">[8, 128, 128, 3]</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-key">Checkpoint Hash</span>
+              <span id="meta-hash" class="meta-val mono">-</span>
+            </div>
+          </div>
+
+          <!-- Epistemic Calibration Notice -->
+          <div class="calibration-notice">
+            <span class="info-icon">ℹ️</span>
+            <span id="meta-calibration">Uncalibrated raw sigmoid score. Reflects direct model activation rather than legal or probabilistic certainty.</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Grad-CAM Explainability Section -->
+    <section class="card explainability-section" id="explain-section" style="display: none;">
+      <div class="card-header">
+        <div>
+          <h2>Spatial Attribution Heatmaps (Grad-CAM)</h2>
+          <p class="section-desc">Visualizes convolutional feature map activations influencing the spatial-temporal classification decision.</p>
+        </div>
+        <span class="tag tag-indigo">Target Layer: Conv_1</span>
+      </div>
+
+      <div class="disclaimer-banner">
+        <strong>Forensic Disclaimer:</strong> Grad-CAM heatmaps highlight spatial regions with high model feature correlation. They do not constitute legal or forensic proof of video synthesis.
+      </div>
+
+      <!-- Overlays Gallery -->
+      <div id="overlays-grid" class="overlays-grid">
+        <!-- Injected via JavaScript -->
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <p>DeepGuard Academic Research Framework — MobileNetV2 + LSTM Video Deepfake Detection</p>
+      <p class="footer-sub">Verified Pipeline: Phases 1–6 Complete</p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
