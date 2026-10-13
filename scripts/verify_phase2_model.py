@@ -83,8 +83,8 @@ def run_model_verification():
 
     # 4. Model parameter breakdown
     total_params = model.count_params()
-    trainable_params = sum(np.prod(v.get_shape().as_list()) for v in model.trainable_weights)
-    non_trainable_params = sum(np.prod(v.get_shape().as_list()) for v in model.non_trainable_weights)
+    trainable_params = sum(np.prod(v.shape) for v in model.trainable_weights)
+    non_trainable_params = sum(np.prod(v.shape) for v in model.non_trainable_weights)
     print("\n[Step 4] Parameter Counts:")
     print(f"  - Total Parameters         : {total_params:,}")
     print(f"  - Trainable Parameters     : {trainable_params:,} (LSTM + Classifier head)")

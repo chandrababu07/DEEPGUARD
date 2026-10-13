@@ -157,10 +157,12 @@ def build_deepguard_model(config: Optional[DeepGuardModelConfig] = None) -> Any:
     frame_extractor = build_frame_feature_extractor(config)
 
     # Step 2: TimeDistributed application across all 8 frames -> output shape (B, 8, 1280)
-    time_distributed_features = layers.TimeDistributed(
+    time_distributed_layer = layers.TimeDistributed(
         frame_extractor,
         name="time_distributed_spatial_extractor",
-    )(video_input)
+    )
+    time_distributed_layer.trainable = config.trainable_backbone
+    time_distributed_features = time_distributed_layer(video_input)
 
     # Step 3: Recurrent temporal modeling -> output shape (B, 64)
     lstm_output = layers.LSTM(
