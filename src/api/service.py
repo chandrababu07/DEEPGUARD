@@ -99,6 +99,7 @@ class ModelService:
                     self._explainer = DeepGuardGradCAM(
                         model=self._predictor.model,
                         target_layer_name="Conv_1",
+                        decision_threshold=self.decision_threshold,
                     )
 
                 self._readiness_error = None
