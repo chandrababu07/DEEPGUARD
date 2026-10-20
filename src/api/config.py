@@ -6,7 +6,7 @@ Loads configuration from environment variables with safe defaults.
 
 from dataclasses import dataclass, field
 import os
-from typing import List, Set
+from typing import List, Optional, Set
 
 
 @dataclass
@@ -37,6 +37,21 @@ class APISettings:
     # Allowed extensions
     allowed_extensions: Set[str] = field(
         default_factory=lambda: {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+    )
+
+    # Dedicated Image Analysis settings
+    image_checkpoint_path: Optional[str] = os.getenv("DEEPGUARD_IMAGE_CHECKPOINT_PATH", "")
+    image_decision_threshold: float = float(
+        os.getenv("DEEPGUARD_IMAGE_DECISION_THRESHOLD", "0.5")
+    )
+    max_image_upload_size_bytes: int = int(
+        os.getenv("DEEPGUARD_MAX_IMAGE_UPLOAD_SIZE", str(20 * 1024 * 1024))
+    )  # 20 MB default
+    max_image_dimension: int = int(
+        os.getenv("DEEPGUARD_MAX_IMAGE_DIMENSION", "8192")
+    )  # 8192 px maximum dimension
+    allowed_image_extensions: Set[str] = field(
+        default_factory=lambda: {".jpg", ".jpeg", ".png", ".webp"}
     )
 
     # Storage paths

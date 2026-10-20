@@ -21,17 +21,21 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings, APISettings
+from .image_service import default_image_service, ImageModelService
 from .schemas import (
     ErrorResponse,
     ExplanationResponse,
     HealthResponse,
+    ImagePredictionResponse,
     PredictionResponse,
     ReadinessResponse,
 )
 from .security import (
     resolve_safe_artifact_path,
     safe_cleanup,
+    save_bounded_image_upload,
     save_bounded_upload,
+    validate_decoded_image,
     validate_decoded_video,
 )
 from .service import default_model_service, ModelService
@@ -42,6 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "web" / "static"
 
 def create_app(
     model_service: Optional[ModelService] = None,
+    image_service: Optional[ImageModelService] = None,
     custom_settings: Optional[APISettings] = None,
 ) -> FastAPI:
     """
@@ -49,6 +54,9 @@ def create_app(
     """
     app_settings = custom_settings or settings
     service = model_service or default_model_service
+    img_service = image_service or (
+        getattr(service, "image_service", None) or default_image_service
+    )
 
     app = FastAPI(
         title="DeepGuard — Spatial-Temporal Deepfake Video Detection API",
@@ -211,6 +219,49 @@ def create_app(
 
         finally:
             # Safe cleanup of uploaded temporary file
+            safe_cleanup(temp_path)
+
+    @app.post(
+        "/api/v1/predict/image",
+        response_model=ImagePredictionResponse,
+        tags=["Inference"],
+        summary="Predict Single-Image Manipulation",
+    )
+    async def predict_image(
+        request: Request,
+        file: UploadFile = File(..., description="Uploaded image file (.jpg, .jpeg, .png, .webp)"),
+    ):
+        """
+        Uploads and analyzes a single image file for deepfake manipulation.
+        Enforces size limits, magic bytes, decompression safety, and isolated image model inference.
+        """
+        req_id = getattr(request.state, "request_id", uuid.uuid4().hex)
+        temp_path = None
+
+        try:
+            # 1. Bounded streaming save with image magic byte check
+            temp_path, original_filename = await save_bounded_image_upload(
+                upload_file=file,
+                dest_dir=app_settings.upload_tmp_dir,
+                max_bytes=app_settings.max_image_upload_size_bytes,
+            )
+
+            # 2. OpenCV decoding & spatial dimension validation
+            validate_decoded_image(
+                image_path=temp_path,
+                max_dimension=app_settings.max_image_dimension,
+            )
+
+            # 3. Dedicated image model inference
+            result = img_service.predict(
+                image_path=temp_path,
+                request_id=req_id,
+                image_filename=original_filename,
+            )
+            return result
+
+        finally:
+            # Safe cleanup of uploaded temporary image file
             safe_cleanup(temp_path)
 
     @app.post(

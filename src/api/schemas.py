@@ -28,6 +28,19 @@ class ReadinessResponse(BaseModel):
     device: str
     warnings: List[str] = Field(default_factory=list)
     error: Optional[str] = None
+    # Dedicated Image Analysis readiness
+    image_model_ready: bool = Field(
+        default=False,
+        description="Whether a dedicated image classifier is loaded and ready for inference",
+    )
+    image_checkpoint_path: Optional[str] = Field(
+        default=None,
+        description="Path to configured image model checkpoint",
+    )
+    image_model_status: str = Field(
+        default="unconfigured",
+        description="'ready', 'unconfigured', or 'error'",
+    )
 
 
 class PredictionResponse(BaseModel):
@@ -47,6 +60,26 @@ class PredictionResponse(BaseModel):
     checkpoint_sha256: str
     processing_time_ms: float
     frame_tensor_shape: List[int]
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ImagePredictionResponse(BaseModel):
+    """Structured single-image deepfake prediction response."""
+
+    request_id: str = Field(description="Unique UUID tracking the request")
+    image_filename: str = Field(description="Original uploaded image filename")
+    predicted_label: str = Field(description="'AUTHENTIC' or 'MANIPULATED'")
+    label_code: int = Field(description="0 = Authentic / Real, 1 = Manipulated / Deepfake")
+    fake_score: float = Field(description="Continuous probability score for manipulation in [0.0, 1.0]")
+    real_score: float = Field(description="Complement probability score (1.0 - fake_score)")
+    decision_threshold: float = Field(description="Decision threshold used to separate classes")
+    score_calibration: str = Field(
+        default="Uncalibrated sigmoid output. Reflects raw model output, not certified statistical confidence."
+    )
+    model_version: str
+    checkpoint_sha256: str
+    processing_time_ms: float
+    image_dimensions: List[int] = Field(description="Image [height, width, channels]")
     warnings: List[str] = Field(default_factory=list)
 
 

@@ -22,6 +22,7 @@ from src.model.baseline import HAS_TF
 from src.model.inference import DeepGuardPredictor, InferenceResult
 from src.model.loader import compute_file_sha256
 from .config import settings
+from .image_service import ImageModelService, default_image_service
 from .schemas import (
     ExplanationResponse,
     FrameExplanationItem,
@@ -42,12 +43,14 @@ class ModelService:
         predictor: Optional[DeepGuardPredictor] = None,
         explainer: Optional[DeepGuardGradCAM] = None,
         preprocessor: Optional[VideoPreprocessor] = None,
+        image_service: Optional[ImageModelService] = None,
     ):
         self.checkpoint_path = checkpoint_path or settings.checkpoint_path
         self.decision_threshold = (
             decision_threshold if decision_threshold is not None else settings.decision_threshold
         )
         self.preprocessor = preprocessor or VideoPreprocessor()
+        self.image_service = image_service if image_service is not None else default_image_service
         self._predictor = predictor
         self._explainer = explainer
         self._lock = threading.Lock()
@@ -128,6 +131,12 @@ class ModelService:
         if not os.path.exists(self.checkpoint_path):
             warnings.append(f"Checkpoint not found at '{self.checkpoint_path}'.")
 
+        # Query dedicated image model status
+        img_info = self.image_service.get_status_info() if hasattr(self, "image_service") and self.image_service else None
+        image_ready = img_info["ready"] if img_info else False
+        image_path = img_info["checkpoint_path"] if img_info else None
+        image_status = img_info["status"] if img_info else "unconfigured"
+
         return ReadinessResponse(
             status="ready" if is_ready else "not_ready",
             model_loaded=is_ready,
@@ -139,6 +148,9 @@ class ModelService:
             device="GPU" if (HAS_TF and hasattr(self, "_is_gpu") and self._is_gpu) else "CPU/Unloaded",
             warnings=warnings,
             error=self._readiness_error,
+            image_model_ready=image_ready,
+            image_checkpoint_path=image_path,
+            image_model_status=image_status,
         )
 
     def predict(

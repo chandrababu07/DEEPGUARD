@@ -57,7 +57,28 @@
       </p>
     </section>
 
-    <!-- Model Status Alert (hidden when model ready) -->
+    <!-- Mode Switcher Tabs -->
+    <div class="mode-tabs-container">
+      <div class="mode-segmented-control" role="tablist" aria-label="Analysis Mode Selection">
+        <button type="button" class="mode-tab active" id="tab-video-mode" role="tab" aria-selected="true" data-mode="video">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          Video Analysis
+        </button>
+        <button type="button" class="mode-tab" id="tab-image-mode" role="tab" aria-selected="false" data-mode="image">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          Image Analysis
+        </button>
+      </div>
+    </div>
+
+    <!-- Video Model Status Alert (hidden when model ready) -->
     <div id="model-status-alert" class="alert-banner alert-warning" style="display: none;">
       <div class="alert-icon">⚠️</div>
       <div class="alert-content">
@@ -66,16 +87,26 @@
       </div>
     </div>
 
+    <!-- Image Model Status Alert (displayed when in image mode if unconfigured) -->
+    <div id="image-model-alert" class="alert-banner alert-info" style="display: none;">
+      <div class="alert-icon">ℹ️</div>
+      <div class="alert-content">
+        <strong id="image-alert-title">Dedicated Image Model Unconfigured</strong>
+        <p id="image-alert-message">Image deepfake analysis infrastructure is ready. Live predictions remain unavailable until a compatible trained image model is configured via <code>DEEPGUARD_IMAGE_CHECKPOINT_PATH</code>.</p>
+      </div>
+    </div>
+
     <!-- Upload & Analysis Area -->
     <div class="grid-layout">
       <!-- Upload Card -->
       <section class="card upload-card" id="drop-zone">
         <div class="card-header">
-          <h2>Video Ingestion</h2>
-          <span class="tag">8-Frame Uniform Sampling</span>
+          <h2 id="ingestion-title">Video Ingestion</h2>
+          <span id="ingestion-tag" class="tag">8-Frame Uniform Sampling</span>
         </div>
 
-        <div class="drop-area" id="drop-area">
+        <!-- Video Drop Area -->
+        <div class="drop-area" id="video-drop-area">
           <input type="file" id="video-file-input" accept=".mp4,.avi,.mov,.mkv,.webm" class="file-input" hidden>
           <div class="upload-icon-wrapper">
             <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -86,25 +117,53 @@
           </div>
           <h3>Select or Drop Video File</h3>
           <p class="subtext">Supported: MP4, AVI, MOV, MKV, WebM (Max 100 MB, up to 3 mins)</p>
-          <button type="button" class="btn btn-secondary" id="browse-btn">Browse Files</button>
+          <button type="button" class="btn btn-secondary" id="browse-video-btn">Browse Files</button>
         </div>
 
-        <!-- Selected File Preview -->
-        <div id="file-preview-card" class="file-preview-card" style="display: none;">
+        <!-- Image Drop Area (hidden by default) -->
+        <div class="drop-area" id="image-drop-area" style="display: none;">
+          <input type="file" id="image-file-input" accept=".jpg,.jpeg,.png,.webp" class="file-input" hidden>
+          <div class="upload-icon-wrapper">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </div>
+          <h3>Select or Drop Image File</h3>
+          <p class="subtext">Supported: JPEG, PNG, WebP (Max 20 MB)</p>
+          <button type="button" class="btn btn-secondary" id="browse-image-btn">Browse Image</button>
+        </div>
+
+        <!-- Selected Video Preview -->
+        <div id="video-preview-card" class="file-preview-card" style="display: none;">
           <div class="preview-info">
             <div class="file-icon">🎬</div>
             <div class="file-details">
-              <span id="preview-filename" class="file-name">sample.mp4</span>
-              <span id="preview-filesize" class="file-size">0 MB</span>
+              <span id="video-preview-filename" class="file-name">sample.mp4</span>
+              <span id="video-preview-filesize" class="file-size">0 MB</span>
             </div>
           </div>
-          <button type="button" class="btn-icon" id="clear-file-btn" title="Remove file">✕</button>
+          <button type="button" class="btn-icon" id="clear-video-btn" title="Remove video">✕</button>
+        </div>
+
+        <!-- Selected Image Preview -->
+        <div id="image-preview-card" class="file-preview-card" style="display: none;">
+          <div class="preview-info">
+            <img id="image-preview-thumb" src="" alt="Selected preview" class="image-preview-thumb">
+            <div class="file-details">
+              <span id="image-preview-filename" class="file-name">sample.jpg</span>
+              <span id="image-preview-filesize" class="file-size">0 MB</span>
+              <span id="image-preview-dimensions" class="file-size mono">-</span>
+            </div>
+          </div>
+          <button type="button" class="btn-icon" id="clear-image-btn" title="Remove image">✕</button>
         </div>
 
         <!-- Scanning progress bar -->
         <div id="progress-container" class="progress-container" style="display: none;">
           <div class="progress-status">
-            <span id="progress-label">Processing frames...</span>
+            <span id="progress-label">Processing...</span>
             <span id="progress-percent">0%</span>
           </div>
           <div class="progress-bar">
@@ -112,15 +171,23 @@
           </div>
         </div>
 
-        <!-- Action Controls -->
-        <div class="card-actions">
-          <button type="button" class="btn btn-primary" id="analyze-btn" disabled>
-            <span class="btn-spinner" id="analyze-spinner" style="display: none;"></span>
+        <!-- Video Action Controls -->
+        <div class="card-actions" id="video-actions">
+          <button type="button" class="btn btn-primary" id="analyze-video-btn" disabled>
+            <span class="btn-spinner" id="analyze-video-spinner" style="display: none;"></span>
             Run Deepfake Analysis
           </button>
           <button type="button" class="btn btn-accent" id="explain-btn" disabled>
             <span class="btn-spinner" id="explain-spinner" style="display: none;"></span>
             Generate Grad-CAM
+          </button>
+        </div>
+
+        <!-- Image Action Controls -->
+        <div class="card-actions" id="image-actions" style="display: none;">
+          <button type="button" class="btn btn-primary" id="analyze-image-btn" disabled>
+            <span class="btn-spinner" id="analyze-image-spinner" style="display: none;"></span>
+            Analyze Image
           </button>
         </div>
       </section>
@@ -134,8 +201,8 @@
 
         <div id="empty-state" class="empty-state">
           <div class="empty-icon">🛡️</div>
-          <h3>No Analysis Conducted Yet</h3>
-          <p>Upload a video on the left and select "Run Deepfake Analysis" to evaluate manipulation probability.</p>
+          <h3 id="empty-state-title">No Analysis Conducted Yet</h3>
+          <p id="empty-state-desc">Upload a media file on the left and trigger analysis to evaluate manipulation probability.</p>
         </div>
 
         <div id="results-content" class="results-content" style="display: none;">

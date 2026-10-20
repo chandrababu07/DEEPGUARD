@@ -671,6 +671,19 @@ body {
   letter-spacing: 0.06em;
 }
 
+.verdict-warning {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.18);
+}
+
+.verdict-warning #verdict-label {
+  color: #fbbf24;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 #verdict-sublabel {
   font-size: 0.82rem;
   color: var(--text-secondary);
@@ -939,4 +952,101 @@ body {
   .hero-description {
     font-size: 0.92rem;
   }
+}
+
+/* ==========================================================================
+   Mode Switcher Segmented Control (Video Analysis vs Image Analysis)
+   ========================================================================== */
+.mode-tabs-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+  position: relative;
+  z-index: 2;
+}
+
+.mode-segmented-control {
+  display: inline-flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.35rem;
+  gap: 0.35rem;
+  box-shadow: 0 4px 20px rgba(0, 4, 12, 0.45);
+}
+
+.mode-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 1.45rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-main);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  user-select: none;
+}
+
+.mode-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mode-tab.active {
+  background: linear-gradient(135deg, rgba(32, 217, 245, 0.16) 0%, rgba(57, 119, 255, 0.24) 100%);
+  color: var(--accent-cyan);
+  border-color: rgba(32, 217, 245, 0.36);
+  box-shadow: 0 0 16px rgba(32, 217, 245, 0.18);
+}
+
+.mode-tab svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+
+/* Image Preview Thumbnail */
+.image-preview-thumb {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-medium);
+  background: #000;
+  flex-shrink: 0;
+}
+
+/* Alert Info */
+.alert-info {
+  background: rgba(32, 217, 245, 0.08);
+  border: 1px solid rgba(32, 217, 245, 0.28);
+  color: #bae6fd;
+}
+
+.alert-info .alert-icon {
+  color: var(--accent-cyan);
+}
+
+.alert-info .alert-content strong {
+  display: block;
+  color: var(--accent-cyan);
+  margin-bottom: 0.2rem;
+}
+
+.alert-info .alert-content p {
+  color: #93c5fd;
+  font-size: 0.85rem;
+}
+
+.alert-info code {
+  font-family: var(--font-mono);
+  background: rgba(8, 13, 24, 0.6);
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  color: #e0f2fe;
 }

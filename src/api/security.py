@@ -16,6 +16,7 @@ import re
 from typing import Optional, Set, Tuple
 import uuid
 import cv2
+import numpy as np
 from fastapi import HTTPException, UploadFile, status
 
 from .config import settings
@@ -35,6 +36,16 @@ VIDEO_SIGNATURES = [
     lambda b: len(b) >= 3 and b[:3] == b"FLV",
 ]
 
+# Known image container magic byte signatures
+IMAGE_SIGNATURES = [
+    # JPEG (SOI marker \xff\xd8\xff)
+    lambda b: len(b) >= 3 and b[:3] == b"\xff\xd8\xff",
+    # PNG (\x89PNG\r\n\x1a\n)
+    lambda b: len(b) >= 8 and b[:8] == b"\x89PNG\r\n\x1a\n",
+    # WebP (RIFF....WEBP)
+    lambda b: len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP",
+]
+
 
 def is_valid_video_header(header_bytes: bytes) -> bool:
     """Check if initial bytes match a recognized video container signature."""
@@ -43,12 +54,27 @@ def is_valid_video_header(header_bytes: bytes) -> bool:
     return any(check(header_bytes) for check in VIDEO_SIGNATURES)
 
 
+def is_valid_image_header(header_bytes: bytes) -> bool:
+    """Check if initial bytes match a recognized image container signature (JPEG, PNG, WebP)."""
+    if not header_bytes or len(header_bytes) < 3:
+        return False
+    return any(check(header_bytes) for check in IMAGE_SIGNATURES)
+
+
 def sanitize_extension(filename: Optional[str]) -> str:
     """Extract and validate file extension."""
     if not filename:
         return ".mp4"
     ext = Path(filename).suffix.lower()
     return ext if ext in settings.allowed_extensions else ".mp4"
+
+
+def sanitize_image_extension(filename: Optional[str]) -> str:
+    """Extract and validate image file extension."""
+    if not filename:
+        return ".jpg"
+    ext = Path(filename).suffix.lower()
+    return ext if ext in settings.allowed_image_extensions else ".jpg"
 
 
 def safe_cleanup(filepath: Optional[str]) -> None:
@@ -133,6 +159,131 @@ async def save_bounded_upload(
         raise
 
     return dest_path, original_name
+
+
+async def save_bounded_image_upload(
+    upload_file: UploadFile,
+    dest_dir: str,
+    max_bytes: int,
+) -> Tuple[str, str]:
+    """
+    Stream image upload into destination directory with strict size and magic byte bounding.
+
+    Args:
+        upload_file: FastAPI UploadFile object.
+        dest_dir: Directory where the safe temporary file is created.
+        max_bytes: Maximum allowed bytes before aborting upload.
+
+    Returns:
+        Tuple of (saved_file_path, original_filename)
+
+    Raises:
+        HTTPException: If file is empty, exceeds max_bytes, or fails header check.
+    """
+    os.makedirs(dest_dir, exist_ok=True)
+    original_name = upload_file.filename or "unknown.jpg"
+    ext = sanitize_image_extension(original_name)
+
+    # Secure random UUID4 filename to prevent path traversal
+    safe_name = f"upload_img_{uuid.uuid4().hex}{ext}"
+    dest_path = os.path.join(dest_dir, safe_name)
+
+    total_bytes = 0
+    header_checked = False
+    chunk_size = 64 * 1024  # 64 KB streaming buffer
+
+    try:
+        with open(dest_path, "wb") as f:
+            while True:
+                chunk = await upload_file.read(chunk_size)
+                if not chunk:
+                    break
+
+                # Verify container magic bytes on first chunk
+                if not header_checked:
+                    if not is_valid_image_header(chunk[:32]):
+                        raise HTTPException(
+                            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                            detail=(
+                                f"Uploaded file '{original_name}' is not a recognized or supported image format. "
+                                "Supported formats: JPEG, PNG, WebP."
+                            ),
+                        )
+                    header_checked = True
+
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"Image file size exceeds maximum allowed limit of "
+                            f"{max_bytes // (1024 * 1024)} MB."
+                        ),
+                    )
+
+                f.write(chunk)
+
+        if total_bytes == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded image file is empty (0 bytes).",
+            )
+
+    except Exception:
+        safe_cleanup(dest_path)
+        raise
+
+    return dest_path, original_name
+
+
+def validate_decoded_image(
+    image_path: str,
+    max_dimension: int = 8192,
+) -> Tuple[np.ndarray, Tuple[int, int, int]]:
+    """
+    Validate that OpenCV can decode the image file and that properties meet constraints.
+    Applies EXIF orientation handling and validates dimensions against decompression bomb limits.
+
+    Returns:
+        Tuple of (rgb_image_array, (height, width, channels))
+
+    Raises:
+        HTTPException: If image is unreadable, corrupted, or has invalid/excessive dimensions.
+    """
+    # cv2.imread with IMREAD_COLOR respects EXIF orientation by default in OpenCV 4.x
+    bgr_img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if bgr_img is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Failed to decode image. The file appears corrupted, incomplete, or unreadable.",
+        )
+
+    if bgr_img.ndim != 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Image has invalid tensor rank: {bgr_img.ndim}. Expected 3 channels.",
+        )
+
+    height, width, channels = bgr_img.shape
+
+    if height <= 0 or width <= 0 or channels != 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Image has invalid spatial dimensions ({width}x{height}, {channels} channels).",
+        )
+
+    if width > max_dimension or height > max_dimension:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Image dimensions ({width}x{height}) exceed maximum allowed limit of "
+                f"{max_dimension}x{max_dimension} pixels (decompression safety guard)."
+            ),
+        )
+
+    # Convert BGR to RGB
+    rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+    return rgb_img, (height, width, channels)
 
 
 def validate_decoded_video(
